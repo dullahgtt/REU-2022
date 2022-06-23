@@ -1,11 +1,16 @@
-from turtle import color
+from random import betavariate
 from djitellopy import tello
-from time import sleep
 from matplotlib import pyplot as plt
+from matplotlib import patches as patches
 import cv2
 import numpy as np
 import pandas as pd
 from heapq import heappush, heappop
+from tello_sim import Simulator
+
+#for future threading
+from threading import Thread
+from time import perf_counter
 
 global visited
 global earth
@@ -15,16 +20,14 @@ visited = set()
 
 #zones that are to be avoided can be added here to be mapped onto the grid by which the drone will use to fly
 def red_zones():
-    dataframe = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Red Zones.csv")
-    for index, row in dataframe.iterrows():
-       create_zone(row['x1'],row['y1'],row['x2'],row['y2'])
+    #change path based on location of csv file
+    zones = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Red Zones.csv")
+    for index, row in zones.iterrows():
+       map_zone(row['x1'],row['y1'],row['x2'],row['y2'])
 
 #helper function to red_zones() 
-def create_zone(x1,y1,x2,y2):
-    #p1 = (x1,y1)
-    #p2 = (x1,y2)
-    #p3 = (x2,y2)
-    #p4 = (x2,y1)
+def map_zone(x1,y1,x2,y2):
+    #p1 = (x1,y1), p2 = (x1,y2), p3 = (x2,y2), p4 = (x2,y1)
     y = y1
     for t in range(x1,x2+1):
         visited.add((t,y))
@@ -34,9 +37,11 @@ def create_zone(x1,y1,x2,y2):
 
 #plots red zones onto the graph with the desired path
 def plot_red_zones():
-    dataframe = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Red Zones.csv")
+    zones = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Red Zones.csv")
+
     #prints out all the red zones into a graph
-    for index, row in dataframe.iterrows():
+    for index, row in zones.iterrows():
+        #rectangle = patches.Rectangle((row['x2'] - row['x1'], row['y2'] - row['y1']))
         y = row['y1']
         for t in range(row['x1'],row['x2']+1):
             plt.scatter(t,y)
@@ -46,7 +51,6 @@ def plot_red_zones():
     plt.show()
 
 def a_star_graph_search(start, goal_function, successor_function, heuristic):
-    #visited = set() #adds coordinates to visited set
     came_from= dict() #where the robot came from
     distance = {start: 0} #distance from start
     frontier = PriorityQueue() #priorityqueue where everything is stored
@@ -59,8 +63,7 @@ def a_star_graph_search(start, goal_function, successor_function, heuristic):
             return reconstruct_path(came_from, start, node)
         visited.add(node)
         for successor in successor_function(node):
-            frontier.add(successor, priority = distance[node] + 1 + heuristic(successor)
-                         )
+            frontier.add(successor, priority = distance[node] + 1 + heuristic(successor))
             if (successor not in distance or distance[node] + 1 < distance[successor]):
                 distance[successor] = distance[node] +1
                 came_from[successor] = node
@@ -186,26 +189,91 @@ def addsone(grid):
     return grid
 
 #flies the drone based off the path created in the A* pathing algorithm
-def drone_run():
+def drone_flight(shortest_path, origin, dest):
+    prev_point = origin
+    bearing = 0
+    desiredangle = 0
+
+    #CREATE THREAD IMPLEMENTATION FOR PATHING
+    
     #handles connection and takeoff of Tello drone
-    drone = tello.Tello()
-    drone.connect()
-    drone.takeoff()    
+    drone = Simulator()
+    #drone.connect() #when using djitello library
+    drone.takeoff()
+
+    for point in shortest_path:
+        #initializing if on first point, drone doesn't move
+        if prev_point == point:
+            continue
+
+        #up and down movements
+        if point[0] == prev_point[0]:
+            if point[1] > prev_point[1]:
+                desiredangle = -bearing
+            elif point[1] < prev_point[1]:
+                down = 180 - bearing
+                desiredangle = down
+
+        #right and left movements
+        if point[1] == prev_point[1]:
+            if point[0] > prev_point[0]:
+                desiredangle = 270 - bearing
+            elif point[0] < prev_point[0]:
+                desiredangle = 90 - bearing
+
+        # right diagonal movements
+        if point[0] > prev_point[0]:
+            if point[1] > prev_point[1]:
+                desiredangle = 315 - bearing
+            elif point[1] < prev_point[1]:
+                if bearing != 225:
+                    desiredangle = 225 - bearing
+                else:
+                    desiredangle = 225
+        #left diagonal movements
+        elif point[0] < prev_point[0]:
+            if point[1] > prev_point[1]:
+                desiredangle = 45 - bearing
+            elif point[1] < prev_point[1]:
+                desiredangle = 135 - bearing
+        
+        #if the new drone movement has same bearing as previous, move forward
+        if bearing == desiredangle:
+            drone.forward(10)
+            desiredangle = 0
+            prev_point = point
+            continue
+
+        #drone movement
+        drone.ccw(desiredangle)
+        bearing += desiredangle 
+        drone.forward(10)
+
+        #resets bearing to within 0-360 range
+        if bearing >= 360:
+            bearing -= 360
+
+        desiredangle = 0
+        prev_point = point
+        
+    drone.land()
 
 def main():
+    #coordinates for origin and destination of drone
     origin=(30,35)
-    dest=(79, 95)
+    dest=(30, 27)
+
     w, h = 100, 100
     grid = [[0 for x in range(w)] for y in range(h)] 
     grid=addsone(grid)
-    #print(grid)
 
     #pre-sets all red zones onto the map
     red_zones()
-    plot_red_zones()
+    #plot_red_zones()
 
     shortest_path=a_star_graph_search(start=origin, goal_function= get_goal_function(dest), successor_function=get_successor_function(grid), heuristic= get_heuristic(grid, dest))
     if shortest_path is None or grid[0][0] == 1:
+        print("A path could not be found.")
         return -1
     else:
         #plottingPLT(origin, dest)
@@ -217,7 +285,7 @@ def main():
         #plotallpointscv2(shortest_path, origin, dest)
         #return len(shortest_path)
 
-    #drone_run()
+    drone_flight(shortest_path, origin, dest)
 
 if __name__ == "__main__":
     main()
