@@ -1,4 +1,3 @@
-from random import betavariate
 from djitellopy import tello
 from matplotlib import pyplot as plt
 from matplotlib import patches as patches
@@ -13,6 +12,7 @@ from threading import Thread
 from time import perf_counter
 
 global visited
+global redzone #contains all points in the red zones
 global earth
 
 earth = np.zeros((100,100,3), dtype='uint8')
@@ -41,7 +41,6 @@ def plot_red_zones():
 
     #prints out all the red zones into a graph
     for index, row in zones.iterrows():
-        #rectangle = patches.Rectangle((row['x2'] - row['x1'], row['y2'] - row['y1']))
         y = row['y1']
         for t in range(row['x1'],row['x2']+1):
             plt.scatter(t,y)
@@ -81,7 +80,7 @@ def reconstruct_path(came_from, start, end):
         reverse_path.append(end)
     return list(reversed(reverse_path))
 
-#Goal function sees whether we have reached the final goal of the path
+#goal function sees whether we have reached the final goal of the path
 def get_goal_function(dest):
     """
     >>> f = get_goal_function([[0, 0], [0, 0]])
@@ -99,8 +98,8 @@ def get_goal_function(dest):
     #return is_bottom_right
     return dest
 
-#Sucessor function
-#Function is to find the cells adjacent to the current cell
+#sucessor function
+#function is to find the cells adjacent to the current cell
 def get_successor_function(grid):
     """
     >>> f = get_successor_function([[0, 0, 0], [0, 1, 0], [1, 0, 0]])
@@ -122,8 +121,8 @@ def get_successor_function(grid):
         )
     return get_clear_adjacent_cells
 
-#Heuristic
-#The goal of the heuristic is to find the distance to the goal in a clear grid of the same size
+#heuristic
+#the goal of the heuristic is to find the distance to the goal in a clear grid of the same size
 def get_heuristic(grid, dest):
     """
     >>> f = get_heuristic([[0, 0], [0, 0]])
@@ -141,7 +140,7 @@ def get_heuristic(grid, dest):
         return max(abs(a - i), abs(b-j))
     return get_clear_path_distance_from_goal
 
-#Priority queue
+#priority queue
 class PriorityQueue:
 
     def __init__(self, iterable=[]):
@@ -159,29 +158,13 @@ class PriorityQueue:
     def __len__(self):
         return len(self.heap)
 
-def plottingPLT(origin,dest):
-    plt.scatter(origin[0], dest[1])
-    plt.scatter(dest[0], dest[1])
-    plt.plot((origin[0],dest[0]),(origin[1], dest[1]))
-    c=plt.imshow
-    plt.show()
-
+#best path plotting
 def plotallpoints(points):
     for point in points:
         print(point)
         plt.scatter(point[0],point[1])
         path=plt.imshow
     plt.show()
-    
-def plotallpointscv2(points, origin, dest):
-    cv2.circle(earth, (origin), 5, (0,0,255), thickness=-10)
-    cv2.circle(earth, (dest), 5, (0,0,255), thickness=-10)
-    #cv2.rectangle(blank, (0,0), (blank.shape[1]//2, blank.shape[0]//2), (0,255,0), thickness=-1)
-    for point in points:
-        cv2.circle(earth, (point), 5, (0,0,255), thickness=-10)
-    cv2.imshow('Path', earth)
-    cv2.waitKey(0) 
-    cv2.destroyAllWindows()
 
 def addsone(grid):
     i=0
@@ -189,7 +172,7 @@ def addsone(grid):
     return grid
 
 #flies the drone based off the path created in the A* pathing algorithm
-def drone_flight(shortest_path, origin, dest):
+def drone_flight(shortest_path, origin):
     prev_point = origin
     bearing = 0
     desiredangle = 0
@@ -221,7 +204,7 @@ def drone_flight(shortest_path, origin, dest):
             elif point[0] < prev_point[0]:
                 desiredangle = 90 - bearing
 
-        # right diagonal movements
+        #right diagonal movements
         if point[0] > prev_point[0]:
             if point[1] > prev_point[1]:
                 desiredangle = 315 - bearing
@@ -244,7 +227,7 @@ def drone_flight(shortest_path, origin, dest):
             prev_point = point
             continue
 
-        #drone movement
+        #general drone movement
         drone.ccw(desiredangle)
         bearing += desiredangle 
         drone.forward(10)
@@ -255,19 +238,19 @@ def drone_flight(shortest_path, origin, dest):
 
         desiredangle = 0
         prev_point = point
-        
+    
     drone.land()
 
 def main():
-    #coordinates for origin and destination of drone
+    #coordinates for origin and destination
     origin=(30,35)
-    dest=(30, 27)
+    dest=(50, 70)
 
     w, h = 100, 100
     grid = [[0 for x in range(w)] for y in range(h)] 
     grid=addsone(grid)
 
-    #pre-sets all red zones onto the map
+    #maps all red zones
     red_zones()
     #plot_red_zones()
 
@@ -276,16 +259,10 @@ def main():
         print("A path could not be found.")
         return -1
     else:
-        #plottingPLT(origin, dest)
-
         #regular plot of shortest path
         plotallpoints(shortest_path)
 
-        #cv2 graph of shortest path
-        #plotallpointscv2(shortest_path, origin, dest)
-        #return len(shortest_path)
-
-    drone_flight(shortest_path, origin, dest)
+    drone_flight(shortest_path, origin)
 
 if __name__ == "__main__":
     main()

@@ -5,7 +5,7 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 import pandas as pd
 
-from easytello import Tello
+from djitellopy import Tello
 
 
 class Simulator():
@@ -58,7 +58,7 @@ class Simulator():
         self.command_log.append(command_json)
         print('I am running your "{}" command.'.format(self.serialize_command(command_json)))
 
-        time.sleep(2)
+        time.sleep(.15)
 
     # Control Commands
     def command(self):
