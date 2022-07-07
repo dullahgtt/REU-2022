@@ -8,28 +8,47 @@ from heapq import heappush, heappop
 from tello_sim import Simulator
 
 
-global visited
+global visited #dictionary holding all zone types
 global redzone #contains all points in the red zones
 global earth
 
 earth = np.zeros((100,100,3), dtype='uint8')
-visited = set()
+visited = {}
 
 #zones that are to be avoided can be added here to be mapped onto the grid by which the drone will use to fly
+#maps all red zones as 0s in the visited dictionary
 def red_zones():
     #change path based on location of csv file
     zones = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Red Zones.csv")
     for index, row in zones.iterrows():
-       map_zone(row['x1'],row['y1'],row['x2'],row['y2'])
+       map_red_zone(row['x1'],row['y1'],row['x2'],row['y2'])
+
+#zones that are to be avoided unless a path cannot be found can be added onto the local map here
+#maps all yellow zones as 2s in the visited dictionary
+def yellow_zones():
+    #change path based on location of csv file
+    zones = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Yellow Zones.csv")
+    for index, row in zones.iterrows():
+       map_yellow_zone(row['x1'],row['y1'],row['x2'],row['y2'])
 
 #helper function to red_zones() 
-def map_zone(x1,y1,x2,y2):
+def map_red_zone(x1,y1,x2,y2):
     #p1 = (x1,y1), p2 = (x1,y2), p3 = (x2,y2), p4 = (x2,y1)
     y = y1
     for t in range(x1,x2+1):
-        visited.add((t,y))
+        visited[(t,y)] = 0
         for t2 in range(y1,y2+1):
-            visited.add((t,t2))
+            visited[(t,t2)] = 0
+        y = y + 1
+
+#helper function to yellow_zones()
+def map_yellow_zone(x1,y1,x2,y2):
+    #p1 = (x1,y1), p2 = (x1,y2), p3 = (x2,y2), p4 = (x2,y1)
+    y = y1
+    for t in range(x1,x2+1):
+        visited[t,y] = 2
+        for t2 in range(y1,y2+1):
+            visited[(t,t2)] = 2
         y = y + 1
 
 #plots red zones onto the graph with the desired path
@@ -53,16 +72,27 @@ def a_star_graph_search(start, goal_function, successor_function, heuristic):
     frontier.add(start)
     while frontier:
         node = frontier.pop()
-        if node in visited:
+        if node not in visited:
+            visited[node] = 1
+        if (visited[node] == 0): #or (visited[node] == 2):
             continue
-        if goal_function==node:
+        if goal_function == node:
             return reconstruct_path(came_from, start, node)
-        visited.add(node)
+        visited.update({node: 0})
         for successor in successor_function(node):
+            if successor not in visited:
+                visited[successor] = 1
             frontier.add(successor, priority = distance[node] + 1 + heuristic(successor))
-            if (successor not in distance or distance[node] + 1 < distance[successor]):
-                distance[successor] = distance[node] +1
+            if (successor not in distance or distance[node] + 1 < distance[successor]) and visited[successor] == 1:
+                distance[successor] = distance[node] + 1
                 came_from[successor] = node
+                continue
+            if visited[successor] == 2 and (successor not in distance or distance[node] + 1 < distance[successor]):
+                print(successor)
+                distance[successor] = distance[node] + 1
+                came_from[successor] = node
+                frontier.add(successor)
+
     return None
 
 def reconstruct_path(came_from, start, end):
@@ -168,6 +198,10 @@ def addsone(grid):
     d=0
     return grid
 
+#reads in red zones from SQL server
+def matrix_reader():
+    print()
+
 #flies the drone based off the path created in the A* pathing algorithm
 def drone_flight(shortest_path, origin):
     prev_point = origin
@@ -237,7 +271,7 @@ def drone_flight(shortest_path, origin):
     drone.land()
 
 def main():
-    #coordinates for origin and destination
+    #coordinates for drone's origin and destination
     origin=(30,35)
     dest=(50, 70)
 
@@ -245,8 +279,9 @@ def main():
     grid = [[0 for x in range(w)] for y in range(h)] 
     grid=addsone(grid)
 
-    #maps all red zones
+    #maps all red and yellow zones
     red_zones()
+    yellow_zones()
     #plot_red_zones()
 
     shortest_path=a_star_graph_search(start=origin, goal_function= get_goal_function(dest), successor_function=get_successor_function(grid), heuristic= get_heuristic(grid, dest))
