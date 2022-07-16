@@ -1,12 +1,11 @@
-from djitellopy import tello
 from matplotlib import pyplot as plt
 from matplotlib import patches as patches
-import cv2
 import numpy as np
 import pandas as pd
+from math import sqrt
 from heapq import heappush, heappop
 from tello_sim import Simulator
-
+#from djitellopy import tello
 
 global visited #dictionary holding all zone types
 global redzone #contains all points in the red zones
@@ -51,21 +50,29 @@ def map_yellow_zone(x1,y1,x2,y2):
             visited[(t,t2)] = 2
         y = y + 1
 
-#plots red zones onto the graph with the desired path
-def plot_red_zones():
-    zones = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Red Zones.csv")
+#plots red/yellow zones
+def plot_zones():
+    rzones = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Red Zones.csv")
+    yzones = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Yellow Zones.csv")
+    #maps out all the red and yellow zones
+    for index, row in rzones.iterrows():
+        plt.plot((row['x1'],row['x1']),(row['y1'],row['y2']), 'r')
+        plt.plot((row['x1'],row['x2']),(row['y2'],row['y2']), 'r')
+        plt.plot((row['x2'],row['x2']),(row['y2'],row['y1']), 'r')
+        plt.plot((row['x2'],row['x1']),(row['y1'],row['y1']), 'r') 
 
-    #prints out all the red zones into a graph
-    for index, row in zones.iterrows():
-        y = row['y1']
-        for t in range(row['x1'],row['x2']+1):
-            plt.scatter(t,y)
-            for t2 in range(row['y1'],row['y2']+1):
-                plt.scatter(t,t2)
-            y = y + 1
+    for index, row in yzones.iterrows():
+        plt.plot((row['x1'],row['x1']),(row['y1'],row['y2']), 'y')
+        plt.plot((row['x1'],row['x2']),(row['y2'],row['y2']), 'y')
+        plt.plot((row['x2'],row['x2']),(row['y2'],row['y1']), 'y')
+        plt.plot((row['x2'],row['x1']),(row['y1'],row['y1']), 'y') 
+
+    plt.title("Zoning Map")
     plt.show()
 
-def a_star_graph_search(start, goal_function, successor_function, heuristic):
+
+#algorithm takes into consideration both red and yellow zones
+def a_star_graph_search(start, goal_function, successor_function, grid, dest):
     came_from= dict() #where the robot came from
     distance = {start: 0} #distance from start
     frontier = PriorityQueue() #priorityqueue where everything is stored
@@ -74,12 +81,19 @@ def a_star_graph_search(start, goal_function, successor_function, heuristic):
         node = frontier.pop()
         if node not in visited:
             visited[node] = 1
-        if (visited[node] == 0): #or (visited[node] == 2):
+        if visited[node] == 0:
             continue
         if goal_function == node:
             return reconstruct_path(came_from, start, node)
         visited.update({node: 0})
         for successor in successor_function(node):
+            dheuristic = diagonal_heuristic(grid,dest)
+            eheuristic = euclidean_heuristic(grid,dest)
+            #choose heuristic
+            if dheuristic(successor) > eheuristic(successor):
+                heuristic = euclidean_heuristic(grid,dest)
+            else:
+                heuristic = diagonal_heuristic(grid,dest)
             if successor not in visited:
                 visited[successor] = 1
             frontier.add(successor, priority = distance[node] + 1 + heuristic(successor))
@@ -87,12 +101,11 @@ def a_star_graph_search(start, goal_function, successor_function, heuristic):
                 distance[successor] = distance[node] + 1
                 came_from[successor] = node
                 continue
-            if visited[successor] == 2 and (successor not in distance or distance[node] + 1 < distance[successor]):
+            if visited[successor] == 2 and (successor not in distance or distance[node] + 1 < distance[successor]): #when accessing yellow zones
                 print(successor)
                 distance[successor] = distance[node] + 1
                 came_from[successor] = node
                 frontier.add(successor)
-
     return None
 
 def reconstruct_path(came_from, start, end):
@@ -148,9 +161,9 @@ def get_successor_function(grid):
         )
     return get_clear_adjacent_cells
 
-#heuristic
+#diagonal heuristic
 #the goal of the heuristic is to find the distance to the goal in a clear grid of the same size
-def get_heuristic(grid, dest):
+def diagonal_heuristic(grid, dest):
     """
     >>> f = get_heuristic([[0, 0], [0, 0]])
     >>> f((0, 0))
@@ -161,10 +174,20 @@ def get_heuristic(grid, dest):
     0
     """
     #M, N = len(grid)
-    (a, b) = goal_cell = (dest[0],dest[1])
+    (a, b) = (dest[0],dest[1])
     def get_clear_path_distance_from_goal(cell):
         (i, j) = cell
         return max(abs(a - i), abs(b-j))
+    return get_clear_path_distance_from_goal
+
+#alternative euclidean heuristic
+def euclidean_heuristic(grid, dest):
+    (a,b) = (dest[0], dest[1])
+    def get_clear_path_distance_from_goal(cell):
+        (i, j) = cell
+        dx = i - a
+        dy = j - b
+        return dx * dx + dy * dy
     return get_clear_path_distance_from_goal
 
 #priority queue
@@ -191,6 +214,7 @@ def plotallpoints(points):
         print(point)
         plt.scatter(point[0],point[1])
         path=plt.imshow
+    plt.title("A-Star Shortest Path")
     plt.show()
 
 def addsone(grid):
@@ -200,6 +224,7 @@ def addsone(grid):
 
 #reads in red zones from SQL server
 def matrix_reader():
+    #will use pandas and MySQL to read and store matrix data
     print()
 
 #flies the drone based off the path created in the A* pathing algorithm
@@ -223,8 +248,7 @@ def drone_flight(shortest_path, origin):
             if point[1] > prev_point[1]:
                 desiredangle = -bearing
             elif point[1] < prev_point[1]:
-                down = 180 - bearing
-                desiredangle = down
+                desiredangle = 180 - bearing
 
         #right and left movements
         if point[1] == prev_point[1]:
@@ -251,15 +275,23 @@ def drone_flight(shortest_path, origin):
         
         #if the new drone movement has same bearing as previous, move forward
         if bearing == desiredangle:
-            drone.forward(10)
+            drone.forward(20)
             desiredangle = 0
             prev_point = point
             continue
 
+        #FIX to move cw to reduce movement 
+        #if desiredangle > 180:
+            #drone.cw(desiredangle - 180)
+            #bearing += desiredangle
+            #drone.forward(20)
+            #continue
+
         #general drone movement
+        #customizable distance when using drone.forward("distance in cm")
         drone.ccw(desiredangle)
         bearing += desiredangle 
-        drone.forward(10)
+        drone.forward(20)
 
         #resets bearing to within 0-360 range
         if bearing >= 360:
@@ -267,24 +299,26 @@ def drone_flight(shortest_path, origin):
 
         desiredangle = 0
         prev_point = point
-    
+
     drone.land()
+    drone.deploy() #runs flight commands
 
 def main():
     #coordinates for drone's origin and destination
     origin=(30,35)
-    dest=(50, 70)
+    dest=(60, 40)
 
-    w, h = 100, 100
+    w, h = 100, 100 #customizable
     grid = [[0 for x in range(w)] for y in range(h)] 
     grid=addsone(grid)
 
     #maps all red and yellow zones
     red_zones()
     yellow_zones()
-    #plot_red_zones()
+    plot_zones()
 
-    shortest_path=a_star_graph_search(start=origin, goal_function= get_goal_function(dest), successor_function=get_successor_function(grid), heuristic= get_heuristic(grid, dest))
+    shortest_path = a_star_graph_search(start = origin, goal_function = get_goal_function(dest), successor_function = get_successor_function(grid), grid = grid, dest = dest)
+
     if shortest_path is None or grid[0][0] == 1:
         print("A path could not be found.")
         return -1
