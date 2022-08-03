@@ -5,6 +5,7 @@ import pandas as pd
 from math import sqrt
 from heapq import heappush, heappop
 from tello_sim import Simulator
+import mysql.connector as sql
 #from djitellopy import tello
 
 global visited #dictionary holding all zone types
@@ -14,6 +15,15 @@ global earth
 earth = np.zeros((100,100,3), dtype='uint8')
 visited = {}
 
+#ZONE DATA FROM ANDROID APPLICATION
+def zone(df):
+    for ind in df.index:
+        if df['val'][ind] == 0:
+            visited[(df['columnID'][ind],df['rowID'][ind])] = 0
+        elif df['val'][ind] == 2:
+            visited[(df['columnID'][ind],df['rowID'][ind])] = 2
+
+#BELOW MAPS ZONES WITH CSV FILE DATA
 #zones that are to be avoided can be added here to be mapped onto the grid by which the drone will use to fly
 #maps all red zones as 0s in the visited dictionary
 def red_zones():
@@ -50,7 +60,16 @@ def map_yellow_zone(x1,y1,x2,y2):
             visited[(t,t2)] = 2
         y = y + 1
 
-#plots red/yellow zones
+def plot_app_zones(df):
+    for ind in df.index:
+        if df['val'][ind] == 0:
+            plt.plot(df['columnID'][ind],df['rowID'][ind], marker='o', color='r')
+        elif df['val'][ind] == 2:
+            plt.plot(df['columnID'][ind],df['rowID'][ind], marker='o', color='y')
+    plt.title("Zoning Map")
+    plt.show()
+
+#plots red/yellow zones with CSV
 def plot_zones():
     rzones = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Red Zones.csv")
     yzones = pd.read_csv(r"C:/Users/abdul/OneDrive/Documents/REU Summer 2022/Drone Path Mapping/Drone Path Mapping/Best Path/Yellow Zones.csv")
@@ -96,7 +115,7 @@ def a_star_graph_search(start, goal_function, successor_function, grid, dest):
                 heuristic = diagonal_heuristic(grid,dest)
             if successor not in visited:
                 visited[successor] = 1
-            frontier.add(successor, priority = distance[node] + 1 + heuristic(successor))
+            frontier.add(successor, priority = distance[node] + 1 + dheuristic(successor))
             if (successor not in distance or distance[node] + 1 < distance[successor]) and visited[successor] == 1:
                 distance[successor] = distance[node] + 1
                 came_from[successor] = node
@@ -187,7 +206,7 @@ def euclidean_heuristic(grid, dest):
         (i, j) = cell
         dx = i - a
         dy = j - b
-        return dx * dx + dy * dy
+        return sqrt(dx * dx + dy * dy)
     return get_clear_path_distance_from_goal
 
 #priority queue
@@ -225,7 +244,9 @@ def addsone(grid):
 #reads in red zones from SQL server
 def matrix_reader():
     #will use pandas and MySQL to read and store matrix data
-    print()
+    db_connection = sql.connect(host='172.20.10.8', database='nsf', user='root')
+    df = pd.read_sql('SELECT * FROM matrix', con=db_connection)
+    return df
 
 #flies the drone based off the path created in the A* pathing algorithm
 def drone_flight(shortest_path, origin):
@@ -305,17 +326,19 @@ def drone_flight(shortest_path, origin):
 
 def main():
     #coordinates for drone's origin and destination
-    origin=(30,35)
-    dest=(60, 40)
+    origin=(0,0)
+    dest=(9, 9)
 
     w, h = 100, 100 #customizable
     grid = [[0 for x in range(w)] for y in range(h)] 
     grid=addsone(grid)
 
+    zone(matrix_reader())
+    plot_app_zones(matrix_reader())
     #maps all red and yellow zones
-    red_zones()
-    yellow_zones()
-    plot_zones()
+    #red_zones()
+    #yellow_zones()
+    #plot_zones()
 
     shortest_path = a_star_graph_search(start = origin, goal_function = get_goal_function(dest), successor_function = get_successor_function(grid), grid = grid, dest = dest)
 
