@@ -6,6 +6,7 @@ from math import sqrt
 from heapq import heappush, heappop
 from tello_sim import Simulator
 import mysql.connector as sql
+import os
 #from djitellopy import tello
 
 global visited #dictionary holding all zone types
@@ -60,6 +61,7 @@ def map_yellow_zone(x1,y1,x2,y2):
             visited[(t,t2)] = 2
         y = y + 1
 
+#PLOT ZONES FROM ANDROID APPLICATION
 def plot_app_zones(df):
     for ind in df.index:
         if df['val'][ind] == 0:
@@ -244,7 +246,7 @@ def addsone(grid):
 #reads in red zones from SQL server
 def matrix_reader():
     #will use pandas and MySQL to read and store matrix data
-    db_connection = sql.connect(host='172.20.10.8', database='nsf', user='root')
+    db_connection = sql.connect(host='34.170.20.242', database='nsf', user='root', password='noflyzones22')
     df = pd.read_sql('SELECT * FROM matrix', con=db_connection)
     return df
 
@@ -349,6 +351,14 @@ def main():
         #regular plot of shortest path
         plotallpoints(shortest_path)
 
+    # scan available Wifi networks
+    os.system('cmd /c "netsh wlan show networks"')
+ 
+    # input Wifi name
+    name_of_router = 'TELLO-ED6700'
+ 
+    # connect to the given wifi network
+    os.system("netsh wlan connect name=\""+name_of_router+"\" ssid=\""+name_of_router+"\" interface=Wi-Fi")    
     drone_flight(shortest_path, origin)
 
 if __name__ == "__main__":
