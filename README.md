@@ -1,7 +1,7 @@
 # REU-2022
 TAMU-CC Cybersecurity REU: 
 
-Zoning for Normalizing Unmanned Aerial Systems Access Control:
+Zoning for Regulating Unmanned Aerial Systems Access Control:
 
 The purpose of this project is to present a viable real-world solution to personal privacy as pertaining to drone flight. To do this, a proposed three zone system is used, these zones being green, yellow, and red zones. Green zones are fly zones and red zones are no-fly zones. Yellow zones are red zones with the capability to become temporary green zones should a path be unfindable as per the given algorithm. 
 
